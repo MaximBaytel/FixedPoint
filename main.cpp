@@ -6,6 +6,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "decimal.h"
+
 // FractionLength - how many bits are after a period
 template <uint8_t FractionLength, typename Basetype = int32_t, typename HelperType = uint64_t>
 class FixedPoint
@@ -340,6 +342,84 @@ T tricky_poly(T y, T z)
     return 108 - (815 - 1500/z)/y;
 }
 
+template<typename InputInteger, typename OutputInteger>
+std::pair<OutputInteger, uint8_t> getDivisionMultiplier(InputInteger divisor)
+{
+    if (!divisor)
+    {
+        throw std::invalid_argument("Division by zero is impossible");
+    }
+
+    if (divisor == 1)
+    {
+        return {1,0};
+    }
+
+    constexpr uint8_t n = sizeof(InputInteger) * CHAR_BIT;
+
+    const double log_d_temp = std::log2(static_cast<double>(divisor));
+    const uint8_t log_d = std::ceil(log_d_temp);
+
+    if (log_d == std::floor(log_d_temp))
+    {
+        return {1, log_d};
+    }
+
+    OutputInteger res = std::ceil(static_cast<double>(static_cast<OutputInteger>(1) << (log_d + n)) / double(divisor));
+
+    return {res, n + log_d};
+}
+
+
+template<typename InputInteger>
+std::tuple<InputInteger, uint8_t, bool> getDivisionMultiplier(InputInteger divisor)
+{
+    if (!divisor)
+    {
+        throw std::invalid_argument("Division by zero is impossible");
+    }
+
+    if (divisor == 1)
+    {
+        return {1,0, false};
+    }
+
+    constexpr uint8_t n = sizeof(InputInteger) * CHAR_BIT;
+
+    const double log_d_temp = std::log2(static_cast<double>(divisor));
+    const uint8_t log_d = std::ceil(log_d_temp);
+
+    if (log_d == std::floor(log_d_temp))
+    {
+        return {1, log_d, false};
+    }
+
+    uint64_t temp_low = (1UL << (log_d + n));
+    uint64_t temp_hight = (1UL << log_d) | (1UL << (log_d + n));
+
+    temp_hight /= divisor;
+    temp_low /= divisor;
+
+    uint8_t additionla_shift = log_d;
+
+    while (additionla_shift)
+    {
+
+        if (temp_low /2 >= temp_hight/2)
+        {
+            break;
+        }
+
+        temp_low /= 2;
+        temp_hight /= 2;
+
+        --additionla_shift;
+    }
+
+    return {temp_hight, n + additionla_shift, temp_hight > std::numeric_limits<uint8_t>::max()};
+}
+
+
 int main()
 {
     //FixedPoint_not_compile a{1.25};
@@ -383,23 +463,85 @@ int main()
     // std::cout << std::setprecision(20) << exponenta(x) << ' ' << exponenta(fx) << ' ' << std::exp(x) << std::endl;
     // std::cout << std::setprecision(20) << sinus(x) << ' ' << sinus(fx) << ' ' << std::sin(x) << std::endl;
 
-    FixedPoint_20 x_prev{4};
-    FixedPoint_20 x_curr{4.25};
+    // FixedPoint_20 x_prev{4};
+    // FixedPoint_20 x_curr{4.25};
 
-    for (int i=2; i <= 100; ++i)
-    {
-        auto temp = tricky_poly(x_curr, x_prev);
-        x_prev = x_curr;
-        x_curr = temp;
+    // for (int i=2; i <= 100; ++i)
+    // {
+    //     auto temp = tricky_poly(x_curr, x_prev);
+    //     x_prev = x_curr;
+    //     x_curr = temp;
 
-        std::cout << "tricky poly res = " << x_curr << std::endl;
+    //     std::cout << "tricky poly res = " << x_curr << std::endl;
 
-    }
+    // }
 
-    std::cout << "tricky poly res = " << x_curr << std::endl;
+    // std::cout << "tricky poly res = " << x_curr << std::endl;
 
     //std::cout << std::setprecision(20) << poly(x) << ' ' << poly(fx) << std::endl;
      //std::cout << poly1(x) << ' ' << poly1(fx) << std::endl;
+
+    // Decimal<5,2> d{"-031.25"};
+    // std::cout << std::string(d) << std::endl;
+
+    // auto p = getDisionMultiplier<uint8_t, uint16_t>(static_cast<uint8_t>(10));
+
+    // std::cout << p.first << " " << (uint16_t)(p.second) << std::endl;
+
+    // for(uint8_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     auto [multiplier1, shift1] = getDisionMultiplier<uint8_t, uint16_t>(divisor);
+
+    //     auto [multiplier2, shift2, overflow] = getDisionMultiplier(divisor);
+
+    //     for(uint8_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         uint32_t res1 = static_cast<uint32_t>(numenator * multiplier1) >> shift1;
+
+    //         if (res1 != numenator / divisor)
+    //         {
+    //             std::cout << "panic: did something went wrong?" << std::endl;
+    //         }
+
+    //         uint32_t res2 = 0;
+
+    //         if (!overflow)
+    //         {
+    //             res2 = (numenator * multiplier2) >> shift2;
+    //         }
+    //         else
+    //         {
+    //             uint16_t temp = (numenator * multiplier2);
+    //             uint8_t temp2 = temp >> 8;
+    //             uint16_t temp3 = (numenator - temp2) >> 1;
+    //             res2 = (temp2 + temp3) >> (shift2 - 8 - 1);
+    //         }
+
+    //         if (res2 != numenator / divisor)
+    //         {
+    //             std::cout << "panic 2!" << std::endl;
+    //         }
+    //     }
+    // }
+
+
+    for(uint8_t divisor = 1; divisor > 0; divisor++)
+    {
+        auto [multiplier, shift] = getDivisionMultiplier<uint8_t, uint16_t>(divisor);
+
+        for(uint8_t numenator = 1; numenator > 0; numenator++)
+        {
+            uint32_t res = static_cast<uint32_t>(numenator * multiplier) >> shift;
+
+            if (res != numenator / divisor)
+            {
+                std::cout << "panic: did something went wrong?" << std::endl;
+            }
+        }
+    }
+
+    auto [coeff, shift, _] = getDivisionMultiplier(static_cast<uint8_t>(10));
+    std::cout << (uint16_t)coeff << " " << (uint16_t)(shift) << std::endl;
 
 
     return 0;
