@@ -18,7 +18,7 @@ public:
     static_assert(FractionLength < sizeof(Basetype) * CHAR_BIT);
     static_assert(std::is_integral<Basetype>::value);
     static_assert(std::is_integral<HelperType>::value);
-    static_assert(std::is_signed<Basetype>::value);
+    //static_assert(std::is_signed<Basetype>::value);
     static_assert(std::is_unsigned<HelperType>::value);
 
     explicit FixedPoint(int decimal, unsigned int fraction = 0): val(0)
@@ -95,14 +95,37 @@ public:
         return makeFx(-val);
     }
 
+    FixedPoint& operator << (uint8_t count)
+    {
+        val <<= count;
+        return *this;
+    }
+
+    FixedPoint& operator >> (uint8_t count)
+    {
+        val >>= count;
+        return *this;
+    }
+
+
     FixedPoint operator * (const FixedPoint& r) const
     {
-        auto total_sign = isign(val) * isign(r.val);
-        HelperType temp = HelperType(std::abs(val)) * HelperType(std::abs(r.val));
-        temp >>= (FractionLength - 1);
-        uint8_t unit = temp & least_bit_mask;
+        // auto total_sign = isign(val) * isign(r.val);
+        // HelperType temp = HelperType(std::abs(val)) * HelperType(std::abs(r.val));
+        // temp >>= (FractionLength - 1);
+        // uint8_t unit = temp & least_bit_mask;
 
-        return makeFx(total_sign * ((temp >> 1) + unit));
+        // return makeFx(total_sign * ((temp >> 1) + unit));
+
+        //auto total_sign = isign(val) * isign(r.val);
+        HelperType temp = HelperType(HelperType(val) * HelperType(r.val));
+
+        return makeFx(temp >> FractionLength);
+        // temp >>= (FractionLength - 1);
+        // uint8_t unit = temp & least_bit_mask;
+
+        // return makeFx(((temp >> 1) + unit));
+
     }
 
     FixedPoint operator / (const FixedPoint& r) const
@@ -123,13 +146,13 @@ public:
         UnsignedBasetype temp = val;
         auto fraction = temp & fraction_mask;
 
-        if (sign_mask & temp)
-        {
-            res << '-';
+        // if (sign_mask & temp)
+        // {
+        //     res << '-';
 
-            temp = ~temp + 1;
-            fraction = temp & fraction_mask;
-        }
+        //     temp = ~temp + 1;
+        //     fraction = temp & fraction_mask;
+        // }
 
         res << (temp >> FractionLength);
 
@@ -147,10 +170,22 @@ public:
             }
 
 
-            res << '.' << current_fraction * current_unit;
+            res << '.' << std::setfill('0') << std::setw(FractionLength) << current_fraction * current_unit;
         }
 
         return res.str();
+    }
+
+    Basetype raw() const
+    {
+        return val;
+    }
+
+    static FixedPoint makeFx(Basetype v)
+    {
+        FixedPoint fp;
+        fp.val = v;
+        return fp;
     }
 
 private:
@@ -195,16 +230,18 @@ private:
     {
     }
 
-    static FixedPoint makeFx(Basetype v)
-    {
-        FixedPoint fp;
-        fp.val = v;
-        return fp;
-    }
 };
 
-template <uint8_t FractionLength>
-std::ostream& operator << (std::ostream& out, const FixedPoint<FractionLength>& number)
+// template <uint8_t FractionLength>
+// std::ostream& operator << (std::ostream& out, const FixedPoint<FractionLength>& number)
+// {
+//     out << std::string(number);
+
+//     return out;
+// }
+
+template <uint8_t FractionLength,typename Basetype, typename HelperType>
+std::ostream& operator << (std::ostream& out, const FixedPoint<FractionLength, Basetype, HelperType> & number)
 {
     out << std::string(number);
 
@@ -234,6 +271,13 @@ const FixedPoint<FractionLength> operator - (int l, const FixedPoint<FractionLen
 {
     return FixedPoint<FractionLength>(l) - r;
 }
+
+template <uint8_t FractionLength>
+const FixedPoint<FractionLength> operator - (unsigned int l, const FixedPoint<FractionLength>& r)
+{
+    return FixedPoint<FractionLength>(l) - r;
+}
+
 
 template <uint8_t FractionLength>
 const FixedPoint<FractionLength> operator * (const FixedPoint<FractionLength>& l, int r)
@@ -274,6 +318,9 @@ const FixedPoint<FractionLength> operator += (FixedPoint<FractionLength>& l, con
 }
 
 // let's introduce aliases for convenience
+using FixedPoint_1 = FixedPoint<15, uint16_t, uint32_t>;
+using FixedPoint_16_16 = FixedPoint<16, uint32_t, uint64_t>;
+
 using FixedPoint_2 = FixedPoint<2>;
 using FixedPoint_4 = FixedPoint<4>;
 using FixedPoint_10 = FixedPoint<10>;
@@ -419,9 +466,138 @@ std::tuple<InputInteger, uint8_t, bool> getDivisionMultiplier(InputInteger divis
     return {temp_hight, n + additionla_shift, temp_hight > std::numeric_limits<uint8_t>::max()};
 }
 
+void print_reciprocal(uint8_t bit_number)
+{
+    if (!bit_number || bit_number > CHAR_BIT - 1)
+    {
+        throw std::invalid_argument("It's expected to fit ony byte");
+    }
+
+    uint8_t count = 1 << bit_number;
+
+    std::cout << "uint16_t reciprocals_" << (uint16_t)count << "[] = {";
+
+    for(uint8_t i = 0; i < count; ++i)
+    {
+        uint8_t denominator = 1 << bit_number;
+        denominator |= i;
+
+        double reciprocal = static_cast<double>(1.) / static_cast<double>(denominator);
+
+        uint8_t first_byte = std::scalbln(reciprocal, CHAR_BIT + bit_number);
+
+        if (!first_byte)
+        {
+            first_byte = 0xFF;
+        }
+
+        // align it accrodint to Q 1.15 format used later in the calculations
+        // particularly, we should leave one bit for a whole part
+        std::cout  << ' ' << std::uppercase << std::hex << "0x" << ((uint16_t)first_byte << 7) << ", ";
+
+        if (!(count % 15))
+        {
+            std::cout << std::endl;
+        }
+    }
+
+    std::cout << "};" << std::endl;
+}
+
+//uint8_t reciprocals_8[] = { 0xFF,  0xE3,  0xCC,  0xBA,  0xAA,  0x9D,  0x92,  0x88, };
+//uint8_t reciprocals_8[] = { 0x7F,  0x71,  0x66,  0x5D,  0x55,  0x4E,  0x49,  0x44, };
+
+uint16_t reciprocals_8[] = { 0x7F80,  0x7180,  0x6600,  0x5D00,  0x5500,  0x4E80,  0x4900,  0x4400, };
+
+constexpr uint8_t uint16_size = sizeof(uint16_t) * CHAR_BIT;
+constexpr uint8_t shift_from_int = (sizeof(int) - sizeof(uint16_t)) * CHAR_BIT;
+
+template<uint8_t BitCount = 3,uint16_t Reciprocals[] = reciprocals_8>
+uint16_t divide(uint16_t u, uint16_t v)
+{
+    // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
+    int shift_to_left =  __builtin_clz(v) - shift_from_int;
+
+    std::cout << "degree = " << shift_to_left << std::endl;
+
+    // the first not zero bit should be the most left in uint16_t
+    v <<= shift_to_left;
+
+
+    FixedPoint_1 d = FixedPoint_1::makeFx(v);
+    std::cout << "array index " << (v >> (8 + BitCount + 1)) - 8 << std::endl;
+    // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
+    FixedPoint_1 x = FixedPoint_1::makeFx(reciprocals_8[(v >> (8 + BitCount + 1)) - 8]);
+    FixedPoint_1 one = FixedPoint_1::makeFx(1 << 15); //just one written in Q 1.15
+
+    // two steps of Newton
+    std::cout << "d " << d << std::endl;
+    std::cout << "x " << x << std::endl;
+    x = x + x * (one - d * x);
+    std::cout << "x " << x << " d*x " << d * x  << " (one - d * x) " << (one - d * x) <<std::endl;
+    x = x + x * (one - d * x);
+    std::cout << "x " << x << std::endl;
+
+    std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x << std::endl;
+
+    // just to wrap x into Q 16.16 format though x must be Q 1.15 probably the first bit is always zero...just move it one bit left
+    FixedPoint_16_16 x_16_16 = FixedPoint_16_16::makeFx(x.raw() << 1);
+
+    std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x_16_16 << std::endl;
+
+    //that's just for some tests because you can't wrap 32 bits u to this format
+    FixedPoint_16_16 u_16_16 = FixedPoint_16_16::makeFx(u << 16);
+
+    // when we wrapped v to Q 1.15 we made a tricky thing:
+    // as a physical value we moved it to the left, but as a logical value we moved it to the right
+
+    auto q = (x_16_16 * u_16_16) >> (uint16_size - shift_to_left - 1);
+    std::cout << "u/v = " << q  << std::endl;
+
+
+    //std::cout << "in raw types" << std::endl;
+
+    uint64_t almostResult = uint64_t(x.raw() << 1) * uint64_t(u);
+    uint16_t result = almostResult >> (uint16_size + (uint16_size - shift_to_left - 1));
+    //std::cout << result << std::endl;
+
+    v >>= shift_to_left;
+
+    uint32_t reminder = u - result * v;
+
+    if (reminder >= v)
+    {
+        reminder -= v;
+        ++result;
+
+        if (reminder >= v)
+        {
+            reminder -= v;
+            ++result;
+
+            if (reminder >= v)
+            {
+                reminder -= v;
+                ++result;
+            }
+        }
+    }
+
+    return result;
+}
+// void divide(uint32_t n, uint32_t v)
+// {
+//     if (!v)
+
+// }
 
 int main()
 {
+    //divide(3, 7);
+    //divide(35, 17);
+    //divide(779, 19);
+    print_reciprocal(3);
+
     //FixedPoint_not_compile a{1.25};
     //FixedPoint_2 p1{3.25}; //it must be 1.5
     // FixedPoint_2 p2{1.25};  //it must be 4.25
@@ -525,23 +701,36 @@ int main()
     // }
 
 
-    for(uint8_t divisor = 1; divisor > 0; divisor++)
+    // for(uint8_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     auto [multiplier, shift] = getDivisionMultiplier<uint8_t, uint16_t>(divisor);
+
+    //     for(uint8_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         uint32_t res = static_cast<uint32_t>(numenator * multiplier) >> shift;
+
+    //         if (res != numenator / divisor)
+    //         {
+    //             std::cout << "panic: did something went wrong?" << std::endl;
+    //         }
+    //     }
+    // }
+
+    // auto [coeff, shift, _] = getDivisionMultiplier(static_cast<uint8_t>(10));
+    // std::cout << (uint16_t)coeff << " " << (uint16_t)(shift) << std::endl;
+
+
+
+    for(uint16_t divisor = 1; divisor > 0; divisor++)
     {
-        auto [multiplier, shift] = getDivisionMultiplier<uint8_t, uint16_t>(divisor);
-
-        for(uint8_t numenator = 1; numenator > 0; numenator++)
+        for(uint16_t numenator = 1; numenator > 0; numenator++)
         {
-            uint32_t res = static_cast<uint32_t>(numenator * multiplier) >> shift;
-
-            if (res != numenator / divisor)
+            if (divide(numenator, divisor) != numenator / divisor)
             {
                 std::cout << "panic: did something went wrong?" << std::endl;
             }
         }
     }
-
-    auto [coeff, shift, _] = getDivisionMultiplier(static_cast<uint8_t>(10));
-    std::cout << (uint16_t)coeff << " " << (uint16_t)(shift) << std::endl;
 
 
     return 0;
