@@ -10,6 +10,7 @@
 #include <x86intrin.h>
 
 #include "decimal.h"
+#include "uint16_reciprocals.h"
 
 // FractionLength - how many bits are after a period
 template <uint8_t FractionLength, typename Basetype = int32_t, typename HelperType = uint64_t>
@@ -594,57 +595,20 @@ uint16_t multHigherHalf(uint16_t a, uint16_t b)
 template<uint8_t BitCount = 3,uint16_t Reciprocals[] = reciprocals_8>
 uint16_t divide(uint16_t u, uint16_t v)
 {
-    //return u / v;
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
     int shift_to_left =  __builtin_clz(v) - shift_from_int;
 
-    //std::cout << "degree = " << shift_to_left << std::endl;
-
     // the first not zero bit should be the most left in uint16_t
     v <<= shift_to_left;
-
-
-    //FixedPoint_1 d = FixedPoint_1::makeFx(v);
-    //std::cout << "array index " << (v >> (16 - (BitCount + 1))) - 8 << std::endl;
     // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
     uint16_t x = Reciprocals[(v >> (8 + BitCount + 1)) - 8];
-    //FixedPoint_1 x = FixedPoint_1::makeFx(reciprocals_8[(v >> (8 + BitCount + 1)) - 8]);
-    //FixedPoint_1 one = FixedPoint_1::makeFx(1 << 15); //just one written in Q 1.15
 
     // two steps of Newton
-    //std::cout << "d " << FixedPoint_1::makeFx(v) << std::endl;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
     x = multHigherHalf(static_cast<uint16_t>(- multHigherHalf(v, x)), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
     x = multHigherHalf(static_cast<uint16_t>(- multHigherHalf(v, x)), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //std::cout << "x " << x << std::endl;
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x << std::endl;
-
-    // just to wrap x into Q 16.16 format though x must be Q 1.15 probably the first bit is always zero...just move it one bit left
-    //FixedPoint_16_16 x_16_16 = FixedPoint_16_16::makeFx(x.raw() << 1);
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x_16_16 << std::endl;
-
-    //that's just for some tests because you can't wrap 32 bits u to this format
-    //FixedPoint_16_16 u_16_16 = FixedPoint_16_16::makeFx(u << 16);
-
-    // when we wrapped v to Q 1.15 we made a tricky thing:
-    // as a physical value we moved it to the left, but as a logical value we moved it to the right
-
-    //auto q = (x_16_16 * u_16_16) >> (uint16_size - shift_to_left - 1);
-    //std::cout << "u/v = " << q  << std::endl;
-
-
-    //std::cout << "in raw types" << std::endl;
 
     uint16_t q = multHigherHalf(x, u);
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
     q >>= uint16_size - shift_to_left - 1;
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
 
     if (q)
     {
@@ -678,57 +642,19 @@ uint16_t divide(uint16_t u, uint16_t v)
 template<uint8_t BitCount = 7,uint16_t Reciprocals[] = reciprocals_128>
 uint16_t divide7(uint16_t u, uint16_t v)
 {
-    //return u / v;
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
     int shift_to_left =  __builtin_clz(v) - shift_from_int;
-
-    //std::cout << "degree = " << shift_to_left << std::endl;
 
     // the first not zero bit should be the most left in uint16_t
     v <<= shift_to_left;
 
-
-    //FixedPoint_1 d = FixedPoint_1::makeFx(v);
-    //std::cout << "array index " << ((v >> (8)) & 0x7F) << std::endl;
-    // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
     uint16_t x = Reciprocals[((v >> (8)) & 0x7F)];
-    //FixedPoint_1 x = FixedPoint_1::makeFx(reciprocals_8[(v >> (8 + BitCount + 1)) - 8]);
-    //FixedPoint_1 one = FixedPoint_1::makeFx(1 << 15); //just one written in Q 1.15
 
-    // two steps of Newton
-    //std::cout << "d " << FixedPoint_1::makeFx(v) << std::endl;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << " " << x  << std::endl;
+    // a step of Newton
     x = multHigherHalf(static_cast<uint16_t>(- multHigherHalf(v, x)), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //x = multHigherHalf(static_cast<uint16_t>(- multHigherHalf(v, x)), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //std::cout << "x " << x << std::endl;
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x << std::endl;
-
-    // just to wrap x into Q 16.16 format though x must be Q 1.15 probably the first bit is always zero...just move it one bit left
-    //FixedPoint_16_16 x_16_16 = FixedPoint_16_16::makeFx(x.raw() << 1);
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x_16_16 << std::endl;
-
-    //that's just for some tests because you can't wrap 32 bits u to this format
-    //FixedPoint_16_16 u_16_16 = FixedPoint_16_16::makeFx(u << 16);
-
-    // when we wrapped v to Q 1.15 we made a tricky thing:
-    // as a physical value we moved it to the left, but as a logical value we moved it to the right
-
-    //auto q = (x_16_16 * u_16_16) >> (uint16_size - shift_to_left - 1);
-    //std::cout << "u/v = " << q  << std::endl;
-
-
-    //std::cout << "in raw types" << std::endl;
 
     uint16_t q = multHigherHalf(x, u);
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
     q >>= uint16_size - shift_to_left - 1;
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
 
     if (q)
     {
@@ -763,62 +689,21 @@ uint16_t divide7(uint16_t u, uint16_t v)
 template<uint8_t BitCount = 3,uint16_t Reciprocals[] = reciprocals_8>
 uint16_t new_divide(uint16_t u, uint16_t v)
 {
-    //return u / v;
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
     int shift_to_left =  __builtin_clz(v) - shift_from_int;
-
-    //std::cout << "degree = " << shift_to_left << std::endl;
 
     // the first not zero bit should be the most left in uint16_t
     v <<= shift_to_left;
 
-
-    //FixedPoint_1 d = FixedPoint_1::makeFx(v);
-    //std::cout << "array index " << (v >> (16 - (BitCount + 1))) - 8 << std::endl;
     // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
     uint16_t x = Reciprocals[(v >> (8 + BitCount + 1)) - 8];
-    //FixedPoint_1 x = FixedPoint_1::makeFx(reciprocals_8[(v >> (8 + BitCount + 1)) - 8]);
-    //FixedPoint_1 one = FixedPoint_1::makeFx(1 << 15); //just one written in Q 1.15
 
     // two steps of Newton
-    //std::cout << "d " << FixedPoint_1::makeFx(v) << std::endl;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //std::cout << "x " << x << std::endl;
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x << std::endl;
-
-    // just to wrap x into Q 16.16 format though x must be Q 1.15 probably the first bit is always zero...just move it one bit left
-    //FixedPoint_16_16 x_16_16 = FixedPoint_16_16::makeFx(x.raw() << 1);
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x_16_16 << std::endl;
-
-    //that's just for some tests because you can't wrap 32 bits u to this format
-    //FixedPoint_16_16 u_16_16 = FixedPoint_16_16::makeFx(u << 16);
-
-    // when we wrapped v to Q 1.15 we made a tricky thing:
-    // as a physical value we moved it to the left, but as a logical value we moved it to the right
-
-    //auto q = (x_16_16 * u_16_16) >> (uint16_size - shift_to_left - 1);
-    //std::cout << "u/v = " << q  << std::endl;
-
-
-    //std::cout << "in raw types" << std::endl;
 
     uint16_t q = multHigherHalf(x, u);
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
     q >>= uint16_size - shift_to_left - 1;
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
-
-    // if (q)
-    // {
-    //     --q;
-    // }
 
     v >>= shift_to_left;
 
@@ -831,13 +716,8 @@ uint16_t new_divide(uint16_t u, uint16_t v)
 
         if (reminder >= v)
         {
-            reminder -= v;
             ++q;
 
-            // if (reminder >= v)
-            // {
-            //     ++q;
-            // }
         }
     }
 
@@ -848,62 +728,20 @@ uint16_t new_divide(uint16_t u, uint16_t v)
 template<uint8_t BitCount = 7,uint16_t Reciprocals[] = reciprocals_128>
 uint16_t new_divide7(uint16_t u, uint16_t v)
 {
-    //return u / v;
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
     int shift_to_left =  __builtin_clz(v) - shift_from_int;
-
-    //std::cout << "degree = " << shift_to_left << std::endl;
 
     // the first not zero bit should be the most left in uint16_t
     v <<= shift_to_left;
 
-
-    //FixedPoint_1 d = FixedPoint_1::makeFx(v);
-    //std::cout << "array index " << ((v >> (8)) & 0x7F) << std::endl;
     // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
     uint16_t x = Reciprocals[((v >> (8)) - 128)];
-    //FixedPoint_1 x = FixedPoint_1::makeFx(reciprocals_8[(v >> (8 + BitCount + 1)) - 8]);
-    //FixedPoint_1 one = FixedPoint_1::makeFx(1 << 15); //just one written in Q 1.15
 
-    // two steps of Newton
-    //std::cout << "d " << FixedPoint_1::makeFx(v) << std::endl;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << " " << x  << std::endl;
+    // a step of Newton
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //x = multHigherHalf(static_cast<uint16_t>(- multHigherHalf(v, x)), x) << 1;
-    //std::cout << "x " << FixedPoint_0_16::makeFx(x) << std::endl;
-    //std::cout << "x " << x << std::endl;
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x << std::endl;
-
-    // just to wrap x into Q 16.16 format though x must be Q 1.15 probably the first bit is always zero...just move it one bit left
-    //FixedPoint_16_16 x_16_16 = FixedPoint_16_16::makeFx(x.raw() << 1);
-
-    //std::cout << "reciprocal of " << (v >> shift_to_left)  << " is " << x_16_16 << std::endl;
-
-    //that's just for some tests because you can't wrap 32 bits u to this format
-    //FixedPoint_16_16 u_16_16 = FixedPoint_16_16::makeFx(u << 16);
-
-    // when we wrapped v to Q 1.15 we made a tricky thing:
-    // as a physical value we moved it to the left, but as a logical value we moved it to the right
-
-    //auto q = (x_16_16 * u_16_16) >> (uint16_size - shift_to_left - 1);
-    //std::cout << "u/v = " << q  << std::endl;
-
-
-    //std::cout << "in raw types" << std::endl;
 
     uint16_t q = multHigherHalf(x, u);
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
     q >>= uint16_size - shift_to_left - 1;
-    //std::cout << "q=" << q << " " << sizeof(q) << std::endl;
-    //std::cout << result << std::endl;
-
-    // if (q)
-    // {
-    //     --q;
-    // }
 
     v >>= shift_to_left;
 
@@ -916,28 +754,31 @@ uint16_t new_divide7(uint16_t u, uint16_t v)
 
         if (reminder >= v)
         {
-            reminder -= v;
             ++q;
-
-            // if (reminder >= v)
-            // {
-            //     ++q;
-            // }
         }
     }
 
     return q;
 }
 
-// void divide(uint32_t n, uint32_t v)
-// {
-//     if (!v)
+uint16_t divide_wo(uint16_t u, uint16_t v)
+{
+    uint16_t x = all_reciprocals[v];
+    uint16_t q = multHigherHalf(x, u);
 
-// }
+    uint32_t reminder = u - q * v;
+
+    if (reminder >= v)
+    {
+        q++;
+    }
+
+    return q;
+}
 
 int main()
 {
-    print_all_reciprocals("uint16_reciprocals.h");
+    //print_all_reciprocals("uint16_reciprocals.h");
     //divide(3, 7);
     // std::cout << divide(36198, 53) << std::endl;
     // return -1;
@@ -1151,6 +992,53 @@ int main()
     // auto stop = std::chrono::high_resolution_clock::now();
 
     // std::cout << "duration = " << std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() << std::endl;
+
+    // for(uint16_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     for(uint16_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         if (new_divide7(numenator, divisor) != numenator / divisor)
+    //         {
+    //             std::cout << "panic: did something went wrong?" << std::endl;
+    //             std::cout << "numenator = "  << numenator << " divisor = " << divisor  << " result = " << new_divide7(numenator, divisor) << std::endl;
+    //             return -1;
+    //         }
+    //     }
+    // }
+
+
+    // auto start = std::chrono::high_resolution_clock::now();
+
+    // for(uint16_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     for(uint16_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         volatile uint16_t res = divide_wo(numenator, divisor);
+    //         (void)(res);
+    //     }
+    // }
+
+    // auto stop = std::chrono::high_resolution_clock::now();
+
+    // std::cout << "duration = " << std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() << std::endl;
+
+
+    // auto start = std::chrono::high_resolution_clock::now();
+
+    // for(uint16_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     for(uint16_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         volatile uint16_t res = numenator / divisor;
+    //         (void)(res);
+    //     }
+    // }
+
+    // auto stop = std::chrono::high_resolution_clock::now();
+
+    // std::cout << "duration = " << std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() << std::endl;
+
+
 
     return 0;
 }
