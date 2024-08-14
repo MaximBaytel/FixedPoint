@@ -12,7 +12,7 @@ add_executable(fixed_point main.cpp
 if(MSVC)
   target_compile_options(fixed_point PRIVATE /W4 /WX)
 else()
-  target_compile_options(fixed_point PRIVATE -Wall -Wextra -Wpedantic -Werror -std=c++17)
+  target_compile_options(fixed_point PRIVATE -Wall -Wextra -Wpedantic -Werror -std=c++17 -O3)
 endif()
 
 
