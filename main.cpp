@@ -11,6 +11,8 @@
 
 #include "decimal.h"
 #include "uint16_reciprocals.h"
+#include "uint32_reciprocals.h"
+#include "Rational.h"
 
 // FractionLength - how many bits are after a period
 template <uint8_t FractionLength, typename Basetype = int32_t, typename HelperType = uint64_t>
@@ -479,13 +481,15 @@ void print_reciprocal(uint8_t bit_number)
         throw std::invalid_argument("It's expected to fit ony byte");
     }
 
-    uint8_t count = 1 << bit_number;
+    const uint8_t count = 1 << bit_number;
+
+    //double max_error = 0.0;
 
     std::cout << "uint16_t reciprocals_" << (uint16_t)count << "[] = {";
 
     for(uint8_t i = 0; i < count; ++i)
     {
-        uint8_t denominator = 1 << bit_number;
+        uint8_t denominator = count;
         denominator |= i;
 
         double reciprocal = static_cast<double>(1.) / static_cast<double>(denominator);
@@ -503,9 +507,62 @@ void print_reciprocal(uint8_t bit_number)
         {
             std::cout << std::endl;
         }
+
+        //uint16_t nextDenominator = ((denominator + 1) << 12);
+        //std::cout << std::endl << (first_byte / 256.) << " " << (nextDenominator / 32768.) << std::endl;
+        //max_error = std::max(max_error, std::abs(1. - (first_byte / 256.) * (nextDenominator / 32768.)));
+        //std::cout << "error " << max_error << std::endl;
     }
 
     std::cout << "};" << std::endl;
+
+    //std::cout << "max_error = " << max_error << std::endl;
+}
+
+void print_reciprocal_uint32t(uint8_t bit_number, const char* file_name)
+{
+    if (!file_name || ! std::strlen(file_name))
+    {
+        return;
+    }
+
+
+    if (!bit_number || bit_number > 2 * CHAR_BIT - 1)
+    {
+        throw std::invalid_argument("It's expected to fit two bytes");
+    }
+
+    const uint16_t count = 1 << bit_number;
+    std::ofstream out(file_name);
+
+
+    out << "uint32_t reciprocals_" << (uint16_t)count << "[] = {";
+
+    for(uint16_t i = 0; i < count; ++i)
+    {
+        uint16_t denominator = count;
+        denominator |= i;
+
+        double reciprocal = static_cast<double>(1.) / static_cast<double>(denominator);
+
+        uint16_t first_bytes = std::scalbln(reciprocal, 2 * CHAR_BIT + bit_number);
+
+        if (!first_bytes)
+        {
+            first_bytes = 0xFFFF;
+        }
+
+        out  << ' ' << std::uppercase << std::hex << "0x" << ((uint32_t)first_bytes << 16) << ", ";
+
+        if (!(i % 15))
+        {
+            out << std::endl;
+        }
+    }
+
+    out << "};" << std::endl;
+
+    out.close();
 }
 
 
@@ -562,9 +619,6 @@ void print_all_reciprocals(const char* file_name)
     out.close();
 }
 
-//uint8_t reciprocals_8[] = { 0xFF,  0xE3,  0xCC,  0xBA,  0xAA,  0x9D,  0x92,  0x88, };
-//uint8_t reciprocals_8[] = { 0x7F,  0x71,  0x66,  0x5D,  0x55,  0x4E,  0x49,  0x44, };
-
 uint16_t reciprocals_8[] = { 0xFF00,  0xE300,  0xCC00,  0xBA00,  0xAA00,  0x9D00,  0x9200,  0x8800, };
 
 uint16_t reciprocals_128[] = { 0xFF00,  0xFE00,  0xFC00,  0xFA00,  0xF800,  0xF600,  0xF400,  0xF200,  0xF000,  0xEF00,  0xED00,  0xEB00,  0xEA00,  0xE800,  0xE600,  0xE500,
@@ -579,18 +633,20 @@ uint16_t reciprocals_128[] = { 0xFF00,  0xFE00,  0xFC00,  0xFA00,  0xF800,  0xF6
 constexpr uint8_t uint16_size = sizeof(uint16_t) * CHAR_BIT;
 constexpr uint8_t shift_from_int = (sizeof(int) - sizeof(uint16_t)) * CHAR_BIT;
 
-// template<typename T>
-// T multHigherHalf(T a, T b)
-// {
-//     return (static_cast<T>(a) * static_cast<T>(b)) >> (sizeof(T) * CHAR_BIT);
-// }
-
 uint16_t multHigherHalf(uint16_t a, uint16_t b)
 {
     uint32_t res = a * b;
     res >>= 16;
     return res;
 }
+
+uint32_t multHigherHalf32(uint32_t a, uint32_t b)
+{
+    uint64_t res = (uint64_t)a * (uint64_t)b;
+    res >>= 32;
+    return res;
+}
+
 
 template<uint8_t BitCount = 3,uint16_t Reciprocals[] = reciprocals_8>
 uint16_t divide(uint16_t u, uint16_t v)
@@ -686,29 +742,30 @@ uint16_t divide7(uint16_t u, uint16_t v)
 }
 
 
-template<uint8_t BitCount = 3,uint16_t Reciprocals[] = reciprocals_8>
 uint16_t new_divide(uint16_t u, uint16_t v)
 {
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
-    int shift_to_left =  __builtin_clz(v) - shift_from_int;
+    int shift_to_left =  __builtin_clz(v) - 16;
 
-    // the first not zero bit should be the most left in uint16_t
+    // the first not zero bit should be the most left in uint16_t (normalization)
     v <<= shift_to_left;
 
     // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
-    uint16_t x = Reciprocals[(v >> (8 + BitCount + 1)) - 8];
+    uint16_t x = reciprocals_8[(v >> (8 + 3 + 1)) - 8];
 
     // two steps of Newton
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
 
     uint16_t q = multHigherHalf(x, u);
-    q >>= uint16_size - shift_to_left - 1;
+    q >>= 16 - shift_to_left - 1;
 
+    //get normalization back
     v >>= shift_to_left;
 
     uint32_t reminder = u - q * v;
 
+    // the reminder should be always less than v
     if (reminder >= v)
     {
         reminder -= v;
@@ -725,23 +782,22 @@ uint16_t new_divide(uint16_t u, uint16_t v)
 }
 
 
-template<uint8_t BitCount = 7,uint16_t Reciprocals[] = reciprocals_128>
 uint16_t new_divide7(uint16_t u, uint16_t v)
 {
     // __builtin_clz returns the number of the first not zero bit counting from the left, and the argument is widened to 4 bytes int
-    int shift_to_left =  __builtin_clz(v) - shift_from_int;
+    int shift_to_left =  __builtin_clz(v) - 16;
 
     // the first not zero bit should be the most left in uint16_t
     v <<= shift_to_left;
 
     // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
-    uint16_t x = Reciprocals[((v >> (8)) - 128)];
+    uint16_t x = reciprocals_128[((v >> (8)) & 0x7F)];
 
     // a step of Newton
     x = multHigherHalf(static_cast<uint16_t>((-(v * x)) >> 16), x) << 1;
 
     uint16_t q = multHigherHalf(x, u);
-    q >>= uint16_size - shift_to_left - 1;
+    q >>= 16 - shift_to_left - 1;
 
     v >>= shift_to_left;
 
@@ -776,15 +832,97 @@ uint16_t divide_wo(uint16_t u, uint16_t v)
     return q;
 }
 
+uint32_t divide32(uint32_t u, uint32_t v)
+{
+    // __builtin_clz returns the number of the first not zero bit counting from the left
+    int shift_to_left =  __builtin_clz(v);
+
+    // the first not zero bit should be the most left in uint32_t
+    v <<= shift_to_left;
+
+    // to look it up in the table we should first move the significant for us part to the right and then to zero the most significant bit
+    uint32_t x = reciprocals_32768[(v >> 16) & 0x7FFF];
+
+    // a step of Newton
+    x = multHigherHalf32((-(static_cast<uint64_t>(v) * x) >> 32) , x) << 1;
+
+    uint32_t q = multHigherHalf32(x, u);
+    q >>= 32 - shift_to_left - 1;
+
+    v >>= shift_to_left;
+
+    uint32_t reminder = u - q * v;
+
+    if (reminder >= v)
+    {
+        reminder -= v;
+        ++q;
+
+        if (reminder >= v)
+        {
+            ++q;
+        }
+    }
+
+    return q;
+}
+
+template <typename T>
+Rational<T> muller_func(Rational<T> x0, Rational<T> x1, uint8_t count)
+{
+    Rational<T> x_new;
+
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        x_new =  Rational<T>(108) - (Rational<T>(815) - Rational<T>(1500) / x0) / x1;
+
+        x0 = x1;
+        x1 = x_new;
+    }
+
+    return x_new;
+}
+
 int main()
 {
+
+    std::cout << muller_func(long_rational(4), long_rational(17, 4), 22) << std::endl;
+    // tiny_rational zero;
+    // tiny_rational one{1};
+
+    // tiny_rational one_third{1, 3};
+    // tiny_rational one_half{1, 2};
+    // tiny_rational minus_one_half{1, 2, true};
+
+    // std::cout << tiny_rational(3, 4) * tiny_rational(16, 9) << std::endl;
+
+
+
+    // std::cout << zero << " " << (zero + zero) << " " << (zero * zero) << std::endl;
+
+    // std::cout << one << " " << (one + one) << " " << (one * one) <<
+    //           " " << (one + zero) << " " << (one * zero)
+    //           << std::endl;
+
+    // std::cout << one_third << " " << one_half << " " << (one_third + one_half) << " " <<
+    //         (one_third - one_half) << " " << (one_third * one_half) << " " <<
+    //          (one_third / one_half) << std::endl;
+
+    // std::cout << one_half << " " << minus_one_half << " " << (one_half + minus_one_half)
+    //           << " " << (one_half - minus_one_half) << " " << ( minus_one_half - one_half)
+    //           << " " << (one_half * minus_one_half)  << " " << (one_half / minus_one_half) << std::endl;
+
+     // std::cout << divide32(2147483649, 1) << std::endl;
+     // return 0;
+    //print_reciprocal_uint32t(15, "uint32_reciprocals.h");
     //print_all_reciprocals("uint16_reciprocals.h");
     //divide(3, 7);
     // std::cout << divide(36198, 53) << std::endl;
     // return -1;
     //std::cout << divide(36198, 53) << std::endl;
     //std::cout << divide(32769, 1) << std::endl;
-    // print_reciprocal(7);
+    //print_reciprocal(3);
+     //return 0;
     //std::cout << divide7(102, 3) << std::endl;
     //return 0;
 
@@ -917,10 +1055,10 @@ int main()
     // {
     //     for(uint16_t numenator = 1; numenator > 0; numenator++)
     //     {
-    //         if (new_divide7(numenator, divisor) != numenator / divisor)
+    //         if (new_divide(numenator, divisor) != numenator / divisor)
     //         {
     //             std::cout << "panic: did something went wrong?" << std::endl;
-    //             std::cout << "numenator = "  << numenator << " divisor = " << divisor  << " result = " << new_divide7(numenator, divisor) << std::endl;
+    //             std::cout << "numenator = "  << numenator << " divisor = " << divisor  << " result = " << new_divide(numenator, divisor) << std::endl;
     //             return -1;
     //         }
     //     }
@@ -931,7 +1069,7 @@ int main()
     //     for(uint16_t numenator = 1; numenator > 0; numenator++)
     //     {
     //         volatile uint16_t res = 0;
-    //         res = new_divide7(numenator, divisor);
+    //         res = new_divide(numenator, divisor);
     //         (void)(res);
     //     }
     // }
@@ -984,7 +1122,8 @@ int main()
     // {
     //     for(uint16_t numenator = 1; numenator > 0; numenator++)
     //     {
-    //         volatile uint16_t res = new_divide7(numenator, divisor);
+    //         volatile uint16_t res = divide_wo(numenator, divisor);
+    //         //volatile uint16_t res = numenator / divisor;
     //         (void)(res);
     //     }
     // }
@@ -1038,6 +1177,19 @@ int main()
 
     // std::cout << "duration = " << std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() << std::endl;
 
+
+    // for(uint32_t divisor = 1; divisor > 0; divisor++)
+    // {
+    //     for(uint32_t numenator = 1; numenator > 0; numenator++)
+    //     {
+    //         if (divide32(numenator, divisor) != numenator / divisor)
+    //         {
+    //             std::cout << "panic: did something went wrong?" << std::endl;
+    //             std::cout << "numenator = "  << numenator << " divisor = " << divisor  << " result = " << divide32(numenator, divisor) << std::endl;
+    //             return -1;
+    //         }
+    //     }
+    // }
 
 
     return 0;
